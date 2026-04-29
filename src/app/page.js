@@ -1,13 +1,28 @@
 "use client";
 
-import { useState,  } from "react";
+import { useState, useEffect } from "react";
 
 export default function Home() {
 const [openTimer, setOpenTimer] = useState(false);
-const [timer, setTimer] = useState("10 min");
+const [expiresAt, setExpiresAt] = useState("");
+const [timeLeft, setTimeLeft] = useState(600); // 10 dk = 600 saniye
 const [dark, setDark] = useState(false);
+const minutes = String(Math.floor(timeLeft / 60)).padStart(2, "0");
+const seconds = String(timeLeft % 60).padStart(2, "0");
 
+useEffect(() => {
+  const interval = setInterval(() => {
+    setTimeLeft((prev) => {
+      if (prev <= 1) {
+        clearInterval(interval);
+        return 0;
+      }
+      return prev - 1;
+    });
+  }, 1000);
 
+  return () => clearInterval(interval);
+}, []);
 
   return (
     <main className="min-h-screen bg-white text-black">
@@ -93,21 +108,10 @@ const [dark, setDark] = useState(false);
                 Auto delete after
               </p>
 
-              <div className="flex gap-3">
-                {["5m", "10m", "15m", "20m"].map((t) => (
-                  <button
-                    key={t}
-                    onClick={() => setTimer(t)}
-                    className={`flex-1 rounded-xl py-3 text-sm font-semibold transition ${
-                      timer === t
-                        ? "bg-orange-500 text-white shadow-lg shadow-orange-200"
-                        : "bg-neutral-100 text-neutral-600 hover:bg-orange-50 hover:text-orange-600"
-                    }`}
-                  >
-                    {t}
-                  </button>
-                ))}
-              </div>
+            <div className="mt-6 rounded-xl bg-neutral-900 px-5 py-4 text-white">
+              <p className="text-sm text-neutral-400">Expires at</p>
+              <p className="text-2xl font-bold text-orange-400">{minutes}:{seconds}</p>
+            </div>
             </div>
             </div>
           </div>
