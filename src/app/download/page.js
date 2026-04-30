@@ -1,16 +1,107 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect  } from "react";
 
 export default function DownloadPage() {
   const [code, setCode] = useState("");
   const [foundFile, setFoundFile] = useState(false);
+  const [fileName, setFileName] = useState("");
+  const [timeLeft, setTimeLeft] = useState(null);
+  const [expiresAt, setExpiresAt] = useState(null);
+  const [files, setFiles] = useState([]);setFoundFile
 
-  const handleCheckCode = () => {
-    if (code.length === 6) {
-      setFoundFile(true);
+    const handleCheckCode = async () => {
+    const res = await fetch("/api/download", {
+        method: "POST",
+        headers: {
+        "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ code }),
+    });
+    const expiresHeader = res.headers.get("X-Expires-At");
+    const filesHeader = res.headers.get("X-Files");
+
+    if (filesHeader) {
+    const parsedFiles = JSON.parse(decodeURIComponent(filesHeader));
+    setFiles(parsedFiles);
     }
-  };
+
+    if (expiresHeader) {
+    const expiry = Number(expiresHeader);
+    setExpiresAt(expiry);
+    setTimeLeft(Math.max(0, Math.floor((expiry - Date.now()) / 1000)));
+    }
+
+    if (!res.ok) {
+        const data = await res.json();
+        alert(data.error || "File not found");
+        return;
+    }
+
+    const disposition = res.headers.get("Content-Disposition");
+    let name = "Unknown file";
+
+    if (disposition && disposition.includes("filename=")) {
+        name = disposition
+        .split("filename=")[1]
+        .replaceAll('"', "")
+        .trim();
+    }
+
+    setFileName(name);
+    setFoundFile(true);
+    };
+
+        useEffect(() => {
+    if (!expiresAt) return;
+
+    const interval = setInterval(() => {
+        const secondsLeft = Math.max(
+        0,
+        Math.floor((expiresAt - Date.now()) / 1000)
+        );
+
+        setTimeLeft(secondsLeft);
+
+        if (secondsLeft <= 0) {
+        clearInterval(interval);
+        }
+    }, 1000);
+
+    return () => clearInterval(interval);
+    }, [expiresAt]);
+
+    const handleDownload = async () => {
+    const res = await fetch("/api/download-all", {
+        method: "POST",
+        headers: {
+        "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ code }),
+    });
+
+    if (!res.ok) {
+        const data = await res.json();
+        alert(data.error || "Download failed");
+        return;
+    }
+
+    const blob = await res.blob();
+    const url = window.URL.createObjectURL(blob);
+
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `flashdrop-${code}.zip`;
+
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+
+    window.URL.revokeObjectURL(url);
+    };
+
+    const minutes = String(Math.floor((timeLeft || 0) / 60)).padStart(2, "0");
+    const seconds = String((timeLeft || 0) % 60).padStart(2, "0");
 
   return (
     <main className="min-h-screen bg-white text-black">
@@ -82,7 +173,21 @@ export default function DownloadPage() {
                     ↓
                   </div>
 
-                  <p className="font-semibold">project-file.zip</p>
+                  <div className="space-y-2">
+                    {files.map((file, index) => (
+                        <div
+                        key={file.fileKey}
+                        className="flex items-center justify-between rounded-xl bg-white px-4 py-3 text-left"
+                        >
+                        <div>
+                            <p className="font-semibold">{file.fileName}</p>
+                            <p className="text-sm text-neutral-500">
+                            {(file.size / 1024 / 1024).toFixed(2)} MB
+                            </p>
+                        </div>
+                        </div>
+                    ))}
+                    </div>
                   <p className="mt-1 text-sm text-neutral-500">
                     Ready to download
                   </p>
@@ -100,8 +205,20 @@ export default function DownloadPage() {
                 </div>
                 </div>
 
-                <button className="mt-5 w-full rounded-xl bg-orange-500 px-6 py-4 font-semibold text-white shadow-lg shadow-orange-200 transition hover:bg-orange-600">
-                  Download File
+                <div className="mt-5 rounded-2xl bg-neutral-950 p-5 text-white">
+                    <p className="mb-2 text-sm text-neutral-400">
+                        Deletes automatically in
+                    </p>
+                    <p className="text-3xl font-bold text-orange-400">
+                        {minutes}:{seconds}
+                    </p>
+                </div>
+
+                <button
+                onClick={handleDownload}
+                className="mt-5 w-full rounded-xl bg-orange-500 px-6 py-4 font-semibold text-white shadow-lg shadow-orange-200 transition hover:bg-orange-600"
+                >
+                Download File
                 </button>
               </div>
             </div>

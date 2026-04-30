@@ -4,20 +4,14 @@ import { useState } from "react";
 
 export default function UploadPage() {
   const [timer, setTimer] = useState("10m");
-  const [file, setFile] = useState(null);
+  const [files, setFiles] = useState([]);
   const [generatedCode, setGeneratedCode] = useState("");
   const [copied, setCopied] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [error, setError] = useState("");
 
-  const generateCode = () => {
-  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-  let newCode = "";
+  const MAX_FILE_SIZE = 9 * 1024 * 1024 * 1024; // 9 GB
 
-  for (let i = 0; i < 6; i++) {
-    newCode += chars[Math.floor(Math.random() * chars.length)];
-  }
-
-  setGeneratedCode(newCode);
- };
 
  const copyCode = async () => {
   try {
@@ -30,7 +24,42 @@ export default function UploadPage() {
   } catch (error) {
     console.error("Copy failed:", error);
   }
-};
+    };
+
+    const handleUpload = async () => {
+    if (files.length === 0 || uploading || generatedCode) return;
+
+    setUploading(true);
+    setError("");
+
+    const formData = new FormData();
+
+    files.forEach((file) => {
+    formData.append("files", file);
+    });
+
+    formData.append("timer", timer);
+
+    try {
+        const res = await fetch("/api/upload", {
+        method: "POST",
+        body: formData,
+        });
+
+        const data = await res.json();
+
+        if (!data.success) {
+        setError(data.error || "Upload failed");
+        return;
+        }
+
+        setGeneratedCode(data.code);
+    } catch (err) {
+        setError("Upload failed. Please try again.");
+    } finally {
+        setUploading(false);
+    }
+    };
 
   return (
     <main className="min-h-screen bg-white text-black">
@@ -69,20 +98,46 @@ export default function UploadPage() {
               ↑
             </div>
 
-            <p className="font-semibold">
-              {file ? file.name : "Click to select a file"}
-            </p>
+            <div className="font-semibold">
+            {files.length > 0 ? `${files.length} file(s) selected` : "Click to select files"}
+            </div>
+
+            {files.length > 0 && (
+            <div className="mt-3 space-y-1 text-sm text-neutral-500">
+                {files.map((file) => (
+                <p key={file.name}>{file.name}</p>
+                ))}
+            </div>
+            )}
             <p className="mt-1 text-sm text-neutral-500">
               The file will be stored temporarily.
             </p>
-
             <input
-              type="file"
-              className="hidden"
-              onChange={(e) => setFile(e.target.files?.[0] || null)}
+            type="file"
+            multiple
+            className="hidden"
+            disabled={uploading || generatedCode}
+            onChange={(e) => {
+                const selectedFiles = Array.from(e.target.files || []);
+
+                if (selectedFiles.length === 0) return;
+
+                const tooLarge = selectedFiles.find(
+                (file) => file.size > MAX_FILE_SIZE
+                );
+
+                if (tooLarge) {
+                setError("Each file must be max 9 GB");
+                e.target.value = "";
+                setFiles([]);
+                return;
+                }
+
+                setError("");
+                setFiles(selectedFiles);
+            }}
             />
           </label>
-
           <div className="mt-6">
             <p className="mb-2 text-sm font-medium text-neutral-500">
               Auto delete after
@@ -109,14 +164,14 @@ export default function UploadPage() {
               ))}
             </div>
           </div>
-
-          <button
-            onClick={generateCode}
-            disabled={!file || generatedCode}
+            <button
+            onClick={handleUpload}
+            disabled={files.length === 0 || generatedCode || uploading}
             className="mt-8 w-full rounded-xl bg-orange-500 px-6 py-4 font-semibold text-white shadow-lg shadow-orange-200 transition hover:bg-orange-600 disabled:cursor-not-allowed disabled:bg-neutral-300 disabled:shadow-none"
             >
-            {generatedCode ? "Code Generated" : "Generate Code"}
-          </button>
+            {uploading ? "Uploading..." : generatedCode ? "Code Generated" : "Generate Code"}
+            </button>
+          
             {generatedCode && (
             <div className="mt-6 rounded-2xl bg-neutral-950 p-5 text-white">
                 <p className="mb-2 text-sm text-neutral-400">Your code</p>
