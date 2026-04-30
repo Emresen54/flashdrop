@@ -26,40 +26,78 @@ export default function UploadPage() {
   }
     };
 
-    const handleUpload = async () => {
+  const handleUpload = async () => {
     if (files.length === 0 || uploading || generatedCode) return;
 
     setUploading(true);
     setError("");
 
-    const formData = new FormData();
-
-    files.forEach((file) => {
-    formData.append("files", file);
-    });
-
-    formData.append("timer", timer);
-
     try {
-        const res = await fetch("/api/upload", {
+      const createRes = await fetch("/api/create-transfer", {
         method: "POST",
-        body: formData,
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          timer,
+          files: files.map((file) => ({
+            name: file.name,
+            size: file.size,
+            type: file.type,
+          })),
+        }),
+      });
+
+      const transfer = await createRes.json();
+
+      if (!transfer.success) {
+        setError(transfer.error || "Upload preparation failed");
+        return;
+      }
+
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        const signedFile = transfer.files[i];
+
+        const uploadRes = await fetch(signedFile.uploadUrl, {
+          method: "PUT",
+          headers: {
+            "Content-Type": file.type || "application/octet-stream",
+          },
+          body: file,
         });
 
-        const data = await res.json();
-
-        if (!data.success) {
-        setError(data.error || "Upload failed");
-        return;
+        if (!uploadRes.ok) {
+          throw new Error(`Upload failed: ${file.name}`);
         }
+      }
 
-        setGeneratedCode(data.code);
+      const completeRes = await fetch("/api/complete-transfer", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          code: transfer.code,
+          timer,
+          files: transfer.files,
+        }),
+      });
+
+      const completeData = await completeRes.json();
+
+      if (!completeData.success) {
+        setError(completeData.error || "Could not complete upload");
+        return;
+      }
+
+      setGeneratedCode(transfer.code);
     } catch (err) {
-        setError("Upload failed. Please try again.");
+      setError(err.message || "Upload failed");
     } finally {
-        setUploading(false);
+      setUploading(false);
     }
-    };
+  };
 
   return (
     <main className="min-h-screen bg-white text-black">
